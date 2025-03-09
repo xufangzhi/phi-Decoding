@@ -1,0 +1,6 @@
+.env
+.vscode
+.DS_Store
+.idea
+.pytest_cache
+.ruff_cache
