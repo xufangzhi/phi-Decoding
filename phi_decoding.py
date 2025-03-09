@@ -28,13 +28,14 @@ from data.math_example import (
     MATH_COT_4_SHOT
 )
 
-# set the gpu to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# set visible gpus
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
 # Constants for algorithm configuration
 INF = 10  # Used for initialization of min/max values
 TEMPERATURE = 0.1  # Temperature parameter for softmax sampling
+
 
 def parse_arguments():
     """Parse command line arguments"""
@@ -43,6 +44,8 @@ def parse_arguments():
     # Model configuration
     parser.add_argument('--model_id', type=str, default='llama3.1',
                         help='Model identifier')
+    parser.add_argument('--model_path', type=str, default='meta-llama/Llama-3.1-8B-Instruct',
+                        help='Model path')
     parser.add_argument('--gpus', type=int, default=1,
                         help='Number of GPUs to use')
 
@@ -86,7 +89,6 @@ def parse_arguments():
     parser.add_argument('--time_path', type=str,
                         default='./results/time/',
                         help='Path to save timing information')
-    
 
     return parser.parse_args()
 
@@ -255,46 +257,50 @@ class PhiDecoder:
     def select_response(self, responses, logprobs, advantages):
         """Select final response based on strategy"""
         if self.args.strategy == "cluster":
-            # 首先过滤掉空的响应
+            # filter out empty responses
             valid_indices = []
             for idx, response in enumerate(responses):
                 if response.strip() != '':
                     valid_indices.append(idx)
 
             if len(valid_indices) < self.args.step_beam_size:
-                # 如果有效响应数量不足，回退到基于advantage的选择
+                # if the number of valid responses is less than step_beam_size, use adv no replace
                 print('valid responses are less than step_beam_size, use adv no replace')
                 weights = softmax([adv/TEMPERATURE for adv in advantages])
                 return np.random.choice(len(advantages), p=weights)
 
             try:
-                # 准备聚类数据
+                # prepare cluster data
                 valid_responses = [responses[i] for i in valid_indices]
                 valid_advantages = [advantages[i] for i in valid_indices]
 
-                # 执行TF-IDF向量化和聚类
+                # execute TF-IDF vectorization and clustering
                 vectorizer = TfidfVectorizer()
                 X = vectorizer.fit_transform(valid_responses)
                 kmeans = KMeans(n_clusters=self.args.cluster_num)
                 kmeans.fit(X)
                 cluster_labels = kmeans.labels_
 
-                # 构建聚类列表
+                # build cluster list
                 cluster_list = [[] for _ in range(self.args.cluster_num)]
                 for idx, label in enumerate(cluster_labels):
                     cluster_list[label].append(idx)
                 cluster_list = [sorted(cluster) for cluster in cluster_list]
 
-                # 计算聚类权重和advantage权重
-                cluster_len_ratio = [len(cluster)/len(valid_indices) for cluster in cluster_list]
-                per_sample_cluster_len_ratio = [cluster_len_ratio[cluster_labels[i]] for i in range(len(valid_indices))]
+                # calculate cluster weights and advantage weights
+                cluster_len_ratio = [len(cluster)/len(valid_indices)
+                                     for cluster in cluster_list]
+                per_sample_cluster_len_ratio = [
+                    cluster_len_ratio[cluster_labels[i]] for i in range(len(valid_indices))]
                 cluster_weights = softmax(per_sample_cluster_len_ratio)
-                adv_weights = softmax([adv/TEMPERATURE for adv in valid_advantages])
-                
-                # 组合权重
-                weights = [(cluster_weights[i] + adv_weights[i])/2 for i in range(len(valid_indices))]
+                adv_weights = softmax(
+                    [adv/TEMPERATURE for adv in valid_advantages])
 
-                # 选择样本
+                # combine weights
+                weights = [(cluster_weights[i] + adv_weights[i]) /
+                           2 for i in range(len(valid_indices))]
+
+                # select samples
                 selected = np.random.choice(len(weights), p=weights)
                 return valid_indices[selected]
 
@@ -334,7 +340,8 @@ class PhiDecoder:
         adv_pool = [[] for _ in range(self.args.num_foresight + 1)]
 
         # Initialize beam states
-        previous_steps = ["The reasoning steps are:\n\n" for _ in range(self.args.step_beam_size)]
+        previous_steps = ["The reasoning steps are:\n\n" for _ in range(
+            self.args.step_beam_size)]
         previous_values = [0.0 for _ in range(self.args.step_beam_size)]
 
         # Initialize trajectory information
@@ -342,8 +349,8 @@ class PhiDecoder:
             traj_info = {
                 'question_idx': example.get('id', 0),
                 'question': f"Passage: {example['context']}\nQuestion: {example['question']}\n" +
-                           f"A. {example['answers'][0]}\nB. {example['answers'][1]}\n" +
-                           f"C. {example['answers'][2]}\nD. {example['answers'][3]}",
+                f"A. {example['answers'][0]}\nB. {example['answers'][1]}\n" +
+                f"C. {example['answers'][2]}\nD. {example['answers'][3]}",
                 'ground_truth': example.get('label'),
                 'foresight_part': [],  # Will be filled during each step
                 'final_part': {},      # Will be filled during final generation
@@ -440,12 +447,12 @@ class PhiDecoder:
         for beam_idx in range(self.args.step_beam_size):
             chat = self._prepare_chat_template(example, system_prompt)
             chat[-1]["content"] = previous_steps[beam_idx]
-            
+
             inputs = self.tokenizer.apply_chat_template(
                 chat,
                 tokenize=False
             ).rstrip(self.tokenizer.eos_token).rstrip()
-            
+
             token_stats["input"] += len(self.tokenizer(inputs)["input_ids"])
             all_inputs.append(inputs)
 
@@ -463,25 +470,27 @@ class PhiDecoder:
                 "logprobs": [],
                 "advantages": []
             }
-            
-        rollout_stats["total"] += self.args.num_rollout * self.args.step_beam_size
+
+        rollout_stats["total"] += self.args.num_rollout * \
+            self.args.step_beam_size
 
         # collect the results of the first stage
         all_responses_first_stage = []
         all_logprobs_first_stage = []
         all_advantages_first_stage = []
         all_token_nums_first_stage = []
-        
+
         for beam_idx, beam_outputs in enumerate(outputs):
             if not beam_outputs or not beam_outputs.outputs:
                 print(f"Warning: Empty outputs for beam {beam_idx}")
                 continue
-                
+
             for output in beam_outputs.outputs:
                 response = output.text.strip()
-                logprob = output.cumulative_logprob / (len(output.token_ids) + 1e-8)
+                logprob = output.cumulative_logprob / \
+                    (len(output.token_ids) + 1e-8)
                 advantage = logprob - previous_values[beam_idx]
-                
+
                 all_responses_first_stage.append(response)
                 all_logprobs_first_stage.append(logprob)
                 all_advantages_first_stage.append(advantage)
@@ -495,20 +504,24 @@ class PhiDecoder:
                 # calculate the mean and standard deviation of logprobs
                 mean = np.mean(all_logprobs_first_stage)
                 std = np.std(all_logprobs_first_stage)
-                
+
                 # keep the samples with logprob higher than mean - sigma_rate * std
                 for idx, logp in enumerate(all_logprobs_first_stage):
                     if logp > mean - self.args.sigma_rate * std:
                         keep_foresight_list.append(idx)
-                       
+
             # if the number of kept samples is less than step_beam_size, then supplement
             if len(keep_foresight_list) < self.args.step_beam_size:
-                weights = softmax([adv/TEMPERATURE for adv in all_advantages_first_stage])
-                num_to_add = self.args.step_beam_size - len(keep_foresight_list)
-                available_indices = [i for i in range(len(all_advantages)) if i not in keep_foresight_list]
+                weights = softmax(
+                    [adv/TEMPERATURE for adv in all_advantages_first_stage])
+                num_to_add = self.args.step_beam_size - \
+                    len(keep_foresight_list)
+                available_indices = [i for i in range(
+                    len(all_advantages)) if i not in keep_foresight_list]
                 if available_indices:
                     available_weights = [weights[i] for i in available_indices]
-                    available_weights = [w/sum(available_weights) for w in available_weights]
+                    available_weights = [w/sum(available_weights)
+                                         for w in available_weights]
                     additional_indices = np.random.choice(
                         available_indices,
                         # size=min(num_to_add, len(available_indices)),
@@ -517,18 +530,23 @@ class PhiDecoder:
                         replace=False
                     ).tolist()
                     keep_foresight_list.extend(additional_indices)
-            
+
             keep_foresight_list.sort()
-            
+
             # update the statistics
-            rollout_stats["saved"] += (self.args.step_beam_size * self.args.num_rollout - len(keep_foresight_list))
-            
+            rollout_stats["saved"] += (self.args.step_beam_size *
+                                       self.args.num_rollout - len(keep_foresight_list))
+
             # only keep the selected samples
-            filtered_responses = [all_responses_first_stage[i] for i in keep_foresight_list]
-            filtered_logprobs = [all_logprobs_first_stage[i] for i in keep_foresight_list]
-            filtered_advantages = [all_advantages_first_stage[i] for i in keep_foresight_list]
-            filtered_beam_indices = [i // self.args.num_rollout for i in keep_foresight_list]
-            
+            filtered_responses = [all_responses_first_stage[i]
+                                  for i in keep_foresight_list]
+            filtered_logprobs = [all_logprobs_first_stage[i]
+                                 for i in keep_foresight_list]
+            filtered_advantages = [all_advantages_first_stage[i]
+                                   for i in keep_foresight_list]
+            filtered_beam_indices = [
+                i // self.args.num_rollout for i in keep_foresight_list]
+
             all_responses = filtered_responses
             all_logprobs = filtered_logprobs
             all_advantages = filtered_advantages
@@ -540,18 +558,20 @@ class PhiDecoder:
                 chat = self._prepare_chat_template(example, system_prompt)
                 beam_idx = keep_foresight_list[idx] // self.args.num_rollout
                 chat[-1]["content"] = previous_steps[beam_idx] + response
-                
+
                 inputs = self.tokenizer.apply_chat_template(
                     chat,
                     tokenize=False
                 ).rstrip(self.tokenizer.eos_token).rstrip()
-                
+
                 completion_inputs.append(inputs)
-                token_stats["input"] += len(self.tokenizer(inputs)["input_ids"])
+                token_stats["input"] += len(self.tokenizer(inputs)
+                                            ["input_ids"])
 
         if not completion_inputs:
             # if there is no valid responses, use advantage strategy
-            print('when generate foresight steps, all responses are empty, return the first stage results')
+            print(
+                'when generate foresight steps, all responses are empty, return the first stage results')
             # weights = softmax([adv/TEMPERATURE for adv in all_advantages])
             # selected_indices = np.random.choice(
             #     len(all_advantages),
@@ -578,26 +598,28 @@ class PhiDecoder:
             temperature=0.6,
             stop=["<end_of_reasoning>"]
         )
-        
-        completion_outputs = self.model.generate(completion_inputs, sampling_params)
+
+        completion_outputs = self.model.generate(
+            completion_inputs, sampling_params)
         rollout_stats["total"] += len(completion_inputs)
 
         # collect the results of the second stage
         completed_responses = []
         completed_logprobs = []
         completed_advantages = []
-        
+
         for idx, outputs in enumerate(completion_outputs):
             if not outputs or not outputs.outputs:
                 print(f"Warning: Empty outputs for completion {idx}")
                 continue
-                
+
             output = outputs.outputs[0]
             response = output.text.strip()
-            logprob = output.cumulative_logprob / (len(output.token_ids) + 1e-8)
+            logprob = output.cumulative_logprob / \
+                (len(output.token_ids) + 1e-8)
             beam_idx = keep_foresight_list[idx] // self.args.num_rollout
             advantage = logprob - previous_values[beam_idx]
-            
+
             completed_responses.append(all_responses[idx] + response)
             completed_logprobs.append(logprob)
             completed_advantages.append(advantage)
@@ -619,13 +641,17 @@ class PhiDecoder:
             cluster_list = [sorted(cluster) for cluster in cluster_list]
 
             # calculate the cluster weights and advantage weights
-            cluster_len_ratio = [len(cluster)/len(completed_responses) for cluster in cluster_list]
-            per_sample_cluster_len_ratio = [cluster_len_ratio[cluster_labels[i]] for i in range(len(completed_responses))]
+            cluster_len_ratio = [len(cluster)/len(completed_responses)
+                                 for cluster in cluster_list]
+            per_sample_cluster_len_ratio = [
+                cluster_len_ratio[cluster_labels[i]] for i in range(len(completed_responses))]
             cluster_weights = softmax(per_sample_cluster_len_ratio)
-            adv_weights = softmax([adv/TEMPERATURE for adv in completed_advantages])
-            
+            adv_weights = softmax(
+                [adv/TEMPERATURE for adv in completed_advantages])
+
             # combine the weights
-            weights = [(cluster_weights[ii] + adv_weights[ii])/2 for ii in range(len(completed_responses))]
+            weights = [(cluster_weights[ii] + adv_weights[ii]) /
+                       2 for ii in range(len(completed_responses))]
 
             # select the samples
             selected = np.random.choice(
@@ -692,15 +718,17 @@ class PhiDecoder:
             }
 
         except Exception as e:
-            print('when cluster during intermediate steps, error occurs, use adv no replace')
-            weights = softmax([adv/TEMPERATURE for adv in completed_advantages])
+            print(
+                'when cluster during intermediate steps, error occurs, use adv no replace')
+            weights = softmax(
+                [adv/TEMPERATURE for adv in completed_advantages])
             selected = np.random.choice(
                 len(weights),
                 size=self.args.step_beam_size,
                 p=weights,
                 replace=False
             ).tolist()
-            
+
             return {
                 "next_steps": [previous_steps[keep_foresight_list[idx]//self.args.num_rollout] + all_responses_first_stage[keep_foresight_list[idx]] + "\n" for idx in selected],
                 "next_values": [all_logprobs_first_stage[idx] for idx in selected],
@@ -731,9 +759,10 @@ class PhiDecoder:
                 if response != first_response:
                     just_stop = False
                     break
-            
+
             if just_stop:
-                print(f'Early stopping at depth {current_step} (all responses are the same)')
+                print(
+                    f'Early stopping at depth {current_step} (all responses are the same)')
                 return True
 
             try:
@@ -786,12 +815,12 @@ class PhiDecoder:
         for beam_idx in range(self.args.step_beam_size):
             chat = self._prepare_chat_template(example, system_prompt)
             chat[-1]["content"] = previous_steps[beam_idx]
-            
+
             inputs = self.tokenizer.apply_chat_template(
                 chat,
                 tokenize=False
             ).rstrip(self.tokenizer.eos_token).rstrip()
-            
+
             token_stats["input"] += len(self.tokenizer(inputs)["input_ids"])
             all_inputs.append(inputs)
 
@@ -815,7 +844,7 @@ class PhiDecoder:
                     "selected_idx": 0
                 }
             }
-            
+
         rollout_stats["total"] += self.args.step_beam_size
 
         # Collect all response results
@@ -823,17 +852,18 @@ class PhiDecoder:
         all_logprobs = []
         all_advantages = []
         all_combined_responses = []
-        
+
         for beam_idx, beam_outputs in enumerate(outputs):
             if not beam_outputs or not beam_outputs.outputs:
                 print(f"Warning: Empty outputs for beam {beam_idx}")
                 continue
-                
+
             output = beam_outputs.outputs[0]
             response = output.text.strip()
-            logprob = output.cumulative_logprob / (len(output.token_ids) + 1e-8)
+            logprob = output.cumulative_logprob / \
+                (len(output.token_ids) + 1e-8)
             advantage = logprob - previous_values[beam_idx]
-            
+
             # Combine previous_steps and new response
             combined_response = previous_steps[beam_idx] + response
             all_combined_responses.append(combined_response)
@@ -898,8 +928,6 @@ class PhiDecoder:
             ]
 
 
-
-
 def main():
     """Main execution function"""
     args = parse_arguments()
@@ -914,7 +942,7 @@ def main():
 
     # Record start time
     start_time = time.time()
-    
+
     # Statistics
     total_stats = {
         "total_rollouts": 0,
@@ -957,22 +985,23 @@ def main():
             with open(output_path, "a") as f:
                 f.write(json.dumps(output_result) + "\n")
 
-            print(f'output_token_num_for_this_question: {result["token_stats"]["output"]}')
-            print(f'input_token_num_for_this_question: {result["token_stats"]["input"]}')
+            print(
+                f'output_token_num_for_this_question: {result["token_stats"]["output"]}')
+            print(
+                f'input_token_num_for_this_question: {result["token_stats"]["input"]}')
             print(f'all_output_token_num: {total_stats["output_tokens"]}')
             print(f'all_input_token_num: {total_stats["input_tokens"]}')
 
             # Save trajectory information
             if args.record_process:
-                traj_path = os.path.join(args.time_path, f"TRAJ_INFO-{args.file_name}.json")
+                traj_path = os.path.join(
+                    args.time_path, f"TRAJ_INFO-{args.file_name}.json")
                 with open(traj_path, "w") as f:
                     json.dump(all_traj_info, f, indent=2)
 
         except Exception as e:
             print(f"Error processing example {i}: {e}")
             continue
-
-        
 
     # Calculate total time
     end_time = time.time()
