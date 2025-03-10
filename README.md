@@ -25,7 +25,7 @@ To use the $\phi$-Decoding, we can try with the following command:
 # execute
 conda create -n phi_decoding python==3.10
 conda activate phi_decoding
-pip install vllm
+pip install -r requirements.txt
 python phi_decoding.py
 ```
 
