@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://xufangzhi.github.io/symbol-llm-page/"><b>[🌐 Website]</b></a> •
   <a href="https://arxiv.org/abs/2311.09278"><b>[📜 Paper]</b></a> •
-  <a href="https://github.com/xufangzhi/Symbol-LLM"><b>[🐱 GitHub]</b></a>
+  <a href="https://github.com/xufangzhi/phi-Decoding"><b>[🐱 GitHub]</b></a>
   
 </p>
 
