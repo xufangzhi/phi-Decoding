@@ -21,10 +21,10 @@ Repo for "<a href="https://arxiv.org/abs/2311.09278" target="_blank">φ-Decoding
 
 $\phi$-Decoding provides balanced inference-time exploration and exploitation. The following scaling curve offers the comparisons with other strong methods on LLaMA3.1-8B models. For more results, please refer to our [paper](https://arxiv.org/abs/2311.09278).
 
-![scaling_law](./assets/scaling_law.png)
 
-
-
+<p align="center">
+    <img src="./assets/scaling_law.png" alt="scaling" width="300">
+</p>
 
 ## 🚀 Quick Start
 
