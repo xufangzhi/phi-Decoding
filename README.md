@@ -17,6 +17,15 @@ Repo for "<a href="https://arxiv.org/abs/2311.09278" target="_blank">φ-Decoding
 
 - [2025/02/16] 🔥🔥🔥 $\phi$-Decoding is released !
 
+## 📖 Results
+
+$\phi$-Decoding provides balanced inference-time exploration and exploitation. The following scaling curve offers the comparisons with other strong methods on LLaMA3.1-8B models. For more results, please refer to our [paper](https://arxiv.org/abs/2311.09278).
+
+![scaling_law](./assets/scaling_law.png)
+
+
+
+
 ## 🚀 Quick Start
 
 To use the $\phi$-Decoding, we can try with the following command.
