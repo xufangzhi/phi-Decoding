@@ -23,7 +23,7 @@ $\phi$-Decoding provides balanced inference-time exploration and exploitation. T
 
 
 <p align="center">
-    <img src="./assets/scaling_law.png" alt="scaling" width="300">
+    <img src="./assets/scaling_law.png" alt="scaling" width="400">
 </p>
 
 ## 🚀 Quick Start
