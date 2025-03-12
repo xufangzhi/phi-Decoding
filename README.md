@@ -15,23 +15,32 @@ Repo for "<a href="https://arxiv.org/abs/2311.09278" target="_blank">φ-Decoding
 
 ## 🔥 News
 
-- [2025/02/16] 🔥🔥🔥 $\phi$-Decoding is released and under review !
+- [2025/02/16] 🔥🔥🔥 $\phi$-Decoding is released !
 
 ## 🚀 Quick Start
 
-To use the $\phi$-Decoding, we can try with the following command:
+To use the $\phi$-Decoding, we can try with the following command.
+
+Firstly, create the environment and install the requirements.
 
 ```bash
-# execute
-conda create -n phi_decoding python==3.10
-conda activate phi_decoding
+# env
+conda create -n phi-decoding python==3.10
+conda activate phi-decoding
 pip install -r requirements.txt
+```
+
+Next, simply run the following command after the basic configuration:
+
+```bash
 python phi_decoding.py
 ```
 
-## 📒 Note
 
-This work is still under review. We will open-source the model weights and the code.
+## 🔧 PyPi Package
+
+We are currently working on providing a PyPI package. Stay tuned !
+
 
 ## Citation
 
