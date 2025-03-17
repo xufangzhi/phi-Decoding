@@ -30,7 +30,7 @@ $\phi$-Decoding provides balanced inference-time exploration and exploitation. T
 
 To use the $\phi$-Decoding, we can try with the following command.
 
-Firstly, create the environment and install the requirements.
+Firstly, create the environment and install the requirements. This implementation is accelerated and supported by vllm.
 
 ```bash
 # env
