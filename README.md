@@ -3,14 +3,14 @@
 </h1>
 
 <p align="center">
-  <a href="https://xufangzhi.github.io/symbol-llm-page/"><b>[🌐 Website]</b></a> •
-  <a href="https://arxiv.org/abs/2311.09278"><b>[📜 Paper]</b></a> •
+  <a href="https://github.com/xufangzhi/phi-Decoding/"><b>[🌐 PyPi Package]</b></a> •
+  <a href="https://arxiv.org/abs/2503.13288"><b>[📜 Paper]</b></a> •
   <a href="https://github.com/xufangzhi/phi-Decoding"><b>[🐱 GitHub]</b></a>
   
 </p>
 
 <p align="center">
-Repo for "<a href="https://arxiv.org/abs/2311.09278" target="_blank">φ-Decoding: Adaptive Foresight Sampling for Balanced Inference-Time Exploration and Exploitation</a>"
+Repo for "<a href="https://arxiv.org/abs/2503.13288" target="_blank">φ-Decoding: Adaptive Foresight Sampling for Balanced Inference-Time Exploration and Exploitation</a>"
 </p>
 
 ## 🔥 News
@@ -56,10 +56,10 @@ We are currently working on providing a PyPI package. Stay tuned !
 If you find it helpful, please kindly cite the paper.
 
 ```
-@article{xu2023symbol,
-  title={Symbol-LLM: Towards Foundational Symbol-centric Interface For Large Language Models},
-  author={Xu, Fangzhi and Wu, Zhiyong and Sun, Qiushi and Ren, Siyu and Yuan, Fei and Yuan, Shuai and Lin, Qika and Qiao, Yu and Liu, Jun},
-  journal={arXiv preprint arXiv:2311.09278},
-  year={2023}
+@article{xu2025phi,
+  title={$\phi$-Decoding: Adaptive Foresight Sampling for Balanced Inference-Time Exploration and Exploitation},
+  author={Xu, Fangzhi and Yan, Hang and Ma, Chang and Zhao, Haiteng and Liu, Jun and Lin, Qika and Wu, Zhiyong},
+  journal={arXiv preprint arXiv:2503.13288},
+  year={2025}
 }
 ```
