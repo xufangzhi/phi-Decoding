@@ -21,7 +21,6 @@ Repo for "<a href="https://arxiv.org/abs/2503.13288" target="_blank">φ-Decoding
 
 $\phi$-Decoding provides balanced inference-time exploration and exploitation. The following scaling curve offers the comparisons with other strong methods on LLaMA3.1-8B models. For more results, please refer to our [paper](https://arxiv.org/abs/2311.09278).
 
-
 <p align="center">
     <img src="./assets/scaling_law.png" alt="scaling" width="400">
 </p>
@@ -39,17 +38,17 @@ conda activate phi-decoding
 pip install -r requirements.txt
 ```
 
-Next, simply run the following command after the basic configuration:
+Next, please modify the model path and data path in phi_decoding.py.
+
+Finally, simply run the following command after the basic configuration:
 
 ```bash
 python phi_decoding.py
 ```
 
-
 ## 🔧 PyPi Package
 
 We are currently working on providing a PyPI package. Stay tuned !
-
 
 ## Citation
 
