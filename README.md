@@ -57,7 +57,7 @@ If you find it helpful, please kindly cite the paper.
 
 ```
 @article{xu2025phi,
-  title={$\phi$-Decoding: Adaptive Foresight Sampling for Balanced Inference-Time Exploration and Exploitation},
+  title={$$\backslash$phi $-Decoding: Adaptive Foresight Sampling for Balanced Inference-Time Exploration and Exploitation},
   author={Xu, Fangzhi and Yan, Hang and Ma, Chang and Zhao, Haiteng and Liu, Jun and Lin, Qika and Wu, Zhiyong},
   journal={arXiv preprint arXiv:2503.13288},
   year={2025}
