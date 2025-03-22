@@ -44,7 +44,7 @@ Next, simply run the following command after the basic configuration:
 ```bash
 python phi_decoding.py
 ```
-
+P.S. If you find error in running phi_decoding.py, please refer to "origin" branch. Because we are refactoring the orignal version to provide a PyPi, so temporary bug may appear in this branch. We are so sorry for that inconvenience.
 
 ## 🔧 PyPi Package
 
