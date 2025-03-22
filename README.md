@@ -1,4 +1,4 @@
-### This version contains the original code of phi_docoding. Successfully run this code may take a little time
+### This branch contains the original code of phi_docoding. Successfully run this code may take a little time
 
 <h1 align="center">
 φ-Decoding: Adaptive Foresight Sampling for Balanced Inference-Time Exploration and Exploitation
