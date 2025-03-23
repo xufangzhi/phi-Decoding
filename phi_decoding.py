@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Phi-Decoding: A decoding algorithm that combines clustering and sampling strategies
 # This implementation uses TF-IDF vectorization and K-means clustering for response selection
-
+# Warning: This implementation may be unstable and requires further testing
 import time
 from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
