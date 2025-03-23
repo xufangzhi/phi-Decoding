@@ -29,7 +29,7 @@ from data.math_example import (
 )
 
 # set visible gpus
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 
 # Constants for algorithm configuration
@@ -44,14 +44,14 @@ def parse_arguments():
     # Model configuration
     parser.add_argument('--model_id', type=str, default='llama3.1',
                         help='Model identifier')
-    parser.add_argument('--model_path', type=str, default='meta-llama/Llama-3.1-8B-Instruct',
+    parser.add_argument('--model_path', type=str, default='/data/xrm/yh/test_unsloth/Meta-Llama-3.1-8B-Instruct',
                         help='Model path')
-    parser.add_argument('--gpus', type=int, default=1,
+    parser.add_argument('--gpus', type=int, default=2,
                         help='Number of GPUs to use')
 
     # Data configuration
     parser.add_argument('--datasets', type=str, default='gsm',
-                        help='Dataset type')
+                        help='Dataset type')  # gsm, math, reclor, logiqa, gpqa, arc
     parser.add_argument('--data_path', type=str,
                         default='./data/gsm_test.json',
                         help='Path to input data')
@@ -72,9 +72,9 @@ def parse_arguments():
                         help='Width pruning strategy')
     parser.add_argument('--depth_pruning_strategy', type=str, default='cluster',
                         help='Depth pruning strategy')
-    parser.add_argument('--cluster_num', type=int, default=2,
+    parser.add_argument('--cluster_num', type=int, default=3,
                         help='Number of clusters for clustering strategy')
-    parser.add_argument('--threshold', type=float, default=0.79,
+    parser.add_argument('--threshold', type=float, default=0.69,
                         help='Threshold for early stopping')
     parser.add_argument('--least_foresight_num', type=int, default=4,
                         help='Minimum number of foresight steps')
@@ -89,7 +89,8 @@ def parse_arguments():
     parser.add_argument('--time_path', type=str,
                         default='./results/time/',
                         help='Path to save timing information')
-
+    parser.add_argument('--seed', type=int, default=0,
+                        help='Random seed')
     return parser.parse_args()
 
 
@@ -126,7 +127,7 @@ class PhiDecoder:
         """Initialize the language model and tokenizer"""
         model_path = self._get_model_path()
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_path, max_length=32768, trust_remote_code=True)
+            model_path, trust_remote_code=True, max_length=32768)
 
         if not self.tokenizer.pad_token:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -135,7 +136,10 @@ class PhiDecoder:
             model=model_path,
             tensor_parallel_size=self.args.gpus,
             trust_remote_code=True,
+            max_model_len=32768
         )
+
+        np.random.seed(self.args.seed)
 
     def _get_model_path(self):
         """Get the appropriate model path"""
@@ -154,13 +158,8 @@ class PhiDecoder:
             "math": f"Please solve the following problem step by step.\nWhen you reach the answer, please include the answer in the box format and finish the reasoning with <end_of_reasoning>.\nI will give you some examples for reference.\n{MATH_COT_4_SHOT}",
             "reclor": f"Please solve the following problem step by step.\nYou will be presented with a passage and a question about that passage. There are four options to be chosen from, you need to choose the only correct option to answer that question. If the first option is right, you generate the answer 'A', if the second option is right, you generate the answer 'B', if the third option is right, you generate the answer 'C', if the fourth option is right, you generate the answer 'D'. Read the question and options thoroughly and select the correct answer from the four answer labels. Please finish the reasoning with <end_of_reasoning>.\nI will give you some examples for reference.\n{LOGIC_MRC_COT_4_SHOT}\n",
             "logiqa": f"Please solve the following problem step by step.\nYou will be presented with a passage and a question about that passage. There are four options to be chosen from, you need to choose the only correct option to answer that question. If the first option is right, you generate the answer 'A', if the second option is right, you generate the answer 'B', if the third option is right, you generate the answer 'C', if the fourth option is right, you generate the answer 'D'. Read the question and options thoroughly and select the correct answer from the four answer labels. Please finish the reasoning with <end_of_reasoning>.\nI will give you some examples for reference.\n{LOGIC_MRC_COT_4_SHOT}\n",
-            "strategy": f"Please solve the following problem step by step.\nYou will be presented with one question. At the end, you must output 'Yes' or 'No' after 'The answer is: '.",
-            "cs": f"Please solve the following problem step by step.\nYou will be presented with a passage and a question about that passage. There are five options to be chosen from, you need to choose the only correct option to answer that question.\nPlease output the predicted option after 'The answer is: ' at the end of the response.",
             "gpqa": f"Please solve the following problem step by step.\nYou will be presented with a passage and a question about that passage. There are four options to be chosen from, you need to choose the only correct option to answer that question.\nPlease output the predicted option after 'The answer is: ' at the end of the response.",
             "arc": f"Please solve the following problem step by step.\nYou will be presented with a passage and a question about that passage. There are four options to be chosen from, you need to choose the only correct option to answer that question.\nPlease output the predicted option after 'The answer is: ' at the end of the response.",
-            "scibench": f"Please solve the following problem step by step.\nWhen you reach the answer, please include the answer in the box format and finish the reasoning with <end_of_reasoning>.",
-            "truthfulqa_mc1": f"Please solve the following problem step by step.\nYou will be presented with a question. There are multiple options to be chosen from, you need to choose the only correct option to answer that question.\nPlease output the predicted option after 'The answer is: ' at the end of the response.",
-            "humaneval": f"Please directly complete the following code without any additional comments.\n"
         }
 
         # for R1, we use the following system prompt
@@ -168,53 +167,6 @@ class PhiDecoder:
             return "A conversation between user and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>."
 
         return prompts.get(dataset_type, "")
-
-    def generate_responses(self, inputs, num_samples=1):
-        """
-        Generate responses using the language model(the incomplete response which is used for width pruning)
-        Args:
-            inputs: Input prompts (list of strings)
-            num_samples: Number of responses to generate per input
-        Returns:
-            List of model outputs, where each output contains multiple samples
-        """
-        if not isinstance(inputs, list):
-            inputs = [inputs]
-        inputs = [input.rstrip() + "\n\n" for input in inputs]
-        sampling_params = SamplingParams(
-            max_tokens=1024,
-            n=num_samples,
-            logprobs=0,
-            temperature=0.6,
-            # stop=["\n"]
-            stop=["\n", "<end_of_reasoning>"]
-            # stop=["<end_of_reasoning>"]
-        )
-
-        try:
-            outputs = self.model.generate(inputs, sampling_params)
-            # print(f"Debug: Raw outputs type: {type(outputs)}")
-            # print(f"Debug: Raw outputs length: {len(outputs)}")
-            # if len(outputs) > 0:
-            #     print(f"Debug: First output type: {type(outputs[0])}")
-            #     print(f"Debug: First output attributes: {dir(outputs[0])}")
-
-            # 检查每个output是否有有效的生成结果
-            valid_outputs = []
-            for output in outputs:
-                if output and hasattr(output, 'outputs') and len(output.outputs) > 0:
-                    valid_outputs.append(output)
-                else:
-                    print(f"Warning: Invalid output format: {output}")
-
-            if len(valid_outputs) == 0:
-                print("Warning: No valid outputs generated")
-                return []
-
-            return valid_outputs
-        except Exception as e:
-            print(f"Error in generate_responses: {e}")
-            return []
 
     def cluster_responses(self, responses, advantages):
         """
@@ -263,6 +215,13 @@ class PhiDecoder:
                 if response.strip() != '':
                     valid_indices.append(idx)
 
+            if len(valid_indices) == 0:
+                print(
+                    'all responses in the final generation are empty, use -adv no replace')
+                # beacuse current responses are empty, add '-' to maximize the advantage
+                weights = softmax([-adv/TEMPERATURE for adv in advantages])
+                return np.random.choice(len(advantages), p=weights)
+
             if len(valid_indices) < self.args.step_beam_size:
                 # if the number of valid responses is less than step_beam_size, use adv no replace
                 print('valid responses are less than step_beam_size, use adv no replace')
@@ -277,45 +236,43 @@ class PhiDecoder:
                 # execute TF-IDF vectorization and clustering
                 vectorizer = TfidfVectorizer()
                 X = vectorizer.fit_transform(valid_responses)
-                kmeans = KMeans(n_clusters=self.args.cluster_num)
+                kmeans = KMeans(n_clusters=2)
                 kmeans.fit(X)
                 cluster_labels = kmeans.labels_
 
                 # build cluster list
-                cluster_list = [[] for _ in range(self.args.cluster_num)]
+                cluster_list = [[] for _ in range(2)]
                 for idx, label in enumerate(cluster_labels):
                     cluster_list[label].append(idx)
                 cluster_list = [sorted(cluster) for cluster in cluster_list]
 
-                # calculate cluster weights and advantage weights
-                cluster_len_ratio = [len(cluster)/len(valid_indices)
-                                     for cluster in cluster_list]
-                per_sample_cluster_len_ratio = [
-                    cluster_len_ratio[cluster_labels[i]] for i in range(len(valid_indices))]
-                cluster_weights = softmax(per_sample_cluster_len_ratio)
-                adv_weights = softmax(
-                    [adv/TEMPERATURE for adv in valid_advantages])
-
-                # combine weights
-                weights = [(cluster_weights[i] + adv_weights[i]) /
-                           2 for i in range(len(valid_indices))]
-
-                # select samples
-                selected = np.random.choice(len(weights), p=weights)
-                return valid_indices[selected]
+                cluster0 = cluster_list[0]
+                cluster1 = cluster_list[1]
+                if len(cluster0) > len(cluster1):
+                    cluster_adv_list = [valid_advantages[ddi]
+                                        for ddi in cluster0]
+                    weights = softmax(
+                        [adv/TEMPERATURE for adv in cluster_adv_list])
+                    selected_index_in_cluster = np.random.choice(
+                        len(weights), p=weights)
+                    selected_index_in_tem = cluster0[selected_index_in_cluster]
+                    selected_index_final = valid_indices[selected_index_in_tem]
+                    return selected_index_final
+                else:
+                    cluster_adv_list = [valid_advantages[ddi]
+                                        for ddi in cluster1]
+                    weights = softmax(
+                        [adv/TEMPERATURE for adv in cluster_adv_list])
+                    selected_index_in_cluster = np.random.choice(
+                        len(weights), p=weights)
+                    selected_index_in_tem = cluster1[selected_index_in_cluster]
+                    selected_index_final = valid_indices[selected_index_in_tem]
+                    return selected_index_final
 
             except Exception as e:
                 print('cannot select response based on cluster, use adv no replace')
                 weights = softmax([adv/TEMPERATURE for adv in advantages])
                 return np.random.choice(len(advantages), p=weights)
-
-        elif "sir" in self.args.strategy:
-            weights = softmax([logp/TEMPERATURE for logp in logprobs])
-            return np.random.choice(len(weights), p=weights)
-
-        elif "adv" in self.args.strategy:
-            weights = softmax([adv/TEMPERATURE for adv in advantages])
-            return np.random.choice(len(weights), p=weights)
 
         else:
             raise ValueError(f"Unknown strategy: {self.args.strategy}")
@@ -442,34 +399,30 @@ class PhiDecoder:
 
     def _process_step(self, example, system_prompt, previous_steps, previous_values, token_stats, rollout_stats, traj_info):
         """Process a single reasoning step"""
+        stop_foresight = False
         # first stage: generate incomplete responses
         all_inputs = []
         for beam_idx in range(self.args.step_beam_size):
-            chat = self._prepare_chat_template(example, system_prompt)
-            chat[-1]["content"] = previous_steps[beam_idx]
-
+            chat = self._prepare_chat_template_for_first_stage(
+                example, system_prompt)
+            if self.args.model_id == "mistral":
+                chat[1]['content'] = system_prompt + "\n" + chat[1]['content']
+                chat = chat[1:]
             inputs = self.tokenizer.apply_chat_template(
                 chat,
                 tokenize=False
             ).rstrip(self.tokenizer.eos_token).rstrip()
-
+            inputs = inputs + previous_steps[beam_idx]
             token_stats["input"] += len(self.tokenizer(inputs)["input_ids"])
             all_inputs.append(inputs)
 
-        outputs = self.generate_responses(
+        sampling_params = SamplingParams(
+            max_tokens=1024, n=self.args.num_rollout, logprobs=0, temperature=0.6, stop=["\n", "<end_of_reasoning>"])
+
+        outputs = self.model.generate(
             all_inputs,
-            num_samples=self.args.num_rollout
+            sampling_params
         )
-        if not outputs:
-            print("Error: Failed to generate responses in first stage")
-            return {
-                "next_steps": previous_steps,
-                "next_values": previous_values,
-                "trajectories": [],
-                "steps": [],
-                "logprobs": [],
-                "advantages": []
-            }
 
         rollout_stats["total"] += self.args.num_rollout * \
             self.args.step_beam_size
@@ -481,10 +434,6 @@ class PhiDecoder:
         all_token_nums_first_stage = []
 
         for beam_idx, beam_outputs in enumerate(outputs):
-            if not beam_outputs or not beam_outputs.outputs:
-                print(f"Warning: Empty outputs for beam {beam_idx}")
-                continue
-
             for output in beam_outputs.outputs:
                 response = output.text.strip()
                 logprob = output.cumulative_logprob / \
@@ -513,11 +462,11 @@ class PhiDecoder:
             # if the number of kept samples is less than step_beam_size, then supplement
             if len(keep_foresight_list) < self.args.step_beam_size:
                 weights = softmax(
-                    [adv/TEMPERATURE for adv in all_advantages_first_stage])
+                    [logp/TEMPERATURE for logp in all_logprobs_first_stage])
                 num_to_add = self.args.step_beam_size - \
                     len(keep_foresight_list)
                 available_indices = [i for i in range(
-                    len(all_advantages)) if i not in keep_foresight_list]
+                    len(all_logprobs_first_stage)) if i not in keep_foresight_list]
                 if available_indices:
                     available_weights = [weights[i] for i in available_indices]
                     available_weights = [w/sum(available_weights)
@@ -548,54 +497,30 @@ class PhiDecoder:
                 i // self.args.num_rollout for i in keep_foresight_list]
 
             all_responses = filtered_responses
-            all_logprobs = filtered_logprobs
-            all_advantages = filtered_advantages
 
         # second stage: complete the responses
         completion_inputs = []
-        for idx, response in enumerate(all_responses):
-            if response.strip() != '':
-                chat = self._prepare_chat_template(example, system_prompt)
-                beam_idx = keep_foresight_list[idx] // self.args.num_rollout
-                chat[-1]["content"] = previous_steps[beam_idx] + response
+        for idx in range(len(keep_foresight_list)):
+            response = all_responses[idx]
+            # if response.strip() != '':
+            chat = self._prepare_chat_template(example, system_prompt)
+            beam_idx = keep_foresight_list[idx] // self.args.num_rollout
+            chat[-1]["content"] = previous_steps[beam_idx] + response
 
-                inputs = self.tokenizer.apply_chat_template(
-                    chat,
-                    tokenize=False
-                ).rstrip(self.tokenizer.eos_token).rstrip()
+            inputs = self.tokenizer.apply_chat_template(
+                chat,
+                tokenize=False
+            ).rstrip(self.tokenizer.eos_token).rstrip()
 
-                completion_inputs.append(inputs)
-                token_stats["input"] += len(self.tokenizer(inputs)
-                                            ["input_ids"])
-
-        if not completion_inputs:
-            # if there is no valid responses, use advantage strategy
-            print(
-                'when generate foresight steps, all responses are empty, return the first stage results')
-            # weights = softmax([adv/TEMPERATURE for adv in all_advantages])
-            # selected_indices = np.random.choice(
-            #     len(all_advantages),
-            #     size=self.args.step_beam_size,
-            #     p=weights,
-            #     replace=False
-            # ).tolist()
-            selected_indices = [i for i in range(self.args.step_beam_size)]
-            # return the first stage results
-            return {
-                "next_steps": previous_steps,
-                "next_values": previous_values,
-                "trajectories": all_responses_first_stage,
-                "steps": selected_indices,
-                "logprobs": all_logprobs_first_stage,
-                "advantages": all_advantages_first_stage
-            }
+            completion_inputs.append(inputs)
+            token_stats["input"] += len(self.tokenizer(inputs)
+                                        ["input_ids"])
 
         # generate the completed responses
         sampling_params = SamplingParams(
             max_tokens=1024,
             n=1,
             logprobs=0,
-            temperature=0.6,
             stop=["<end_of_reasoning>"]
         )
 
@@ -609,10 +534,6 @@ class PhiDecoder:
         completed_advantages = []
 
         for idx, outputs in enumerate(completion_outputs):
-            if not outputs or not outputs.outputs:
-                print(f"Warning: Empty outputs for completion {idx}")
-                continue
-
             output = outputs.outputs[0]
             response = output.text.strip()
             logprob = output.cumulative_logprob / \
@@ -620,7 +541,7 @@ class PhiDecoder:
             beam_idx = keep_foresight_list[idx] // self.args.num_rollout
             advantage = logprob - previous_values[beam_idx]
 
-            completed_responses.append(all_responses[idx] + response)
+            completed_responses.append(response)
             completed_logprobs.append(logprob)
             completed_advantages.append(advantage)
             token_stats["output"] += len(output.token_ids)
@@ -660,6 +581,12 @@ class PhiDecoder:
                 p=weights,
                 replace=False
             ).tolist()
+
+            sizes = np.bincount(cluster_labels)
+            largest_ratio = max(sizes) / len(completed_responses)
+
+            if largest_ratio >= self.args.threshold:
+                stop_foresight = True
 
             # Record information after generating first stage responses
             step_info = {
@@ -714,7 +641,8 @@ class PhiDecoder:
                 "trajectories": completed_responses,
                 "steps": [keep_foresight_list[idx] for idx in selected],
                 "logprobs": completed_logprobs,
-                "advantages": completed_advantages
+                "advantages": completed_advantages,
+                "stop_foresight": stop_foresight
             }
 
         except Exception as e:
@@ -735,7 +663,8 @@ class PhiDecoder:
                 "trajectories": all_responses_first_stage,
                 "steps": [keep_foresight_list[idx] for idx in selected],
                 "logprobs": all_logprobs_first_stage,
-                "advantages": all_advantages_first_stage
+                "advantages": all_advantages_first_stage,
+                "stop_foresight": stop_foresight
             }
 
     def _should_stop_early(self, step_results, current_step):
@@ -743,68 +672,24 @@ class PhiDecoder:
         if current_step < self.args.least_foresight_num:
             return False
 
+        just_stop = True
+        first_response = step_results["trajectories"][0]
+        for response in step_results["trajectories"][1:]:
+            if response != first_response:
+                just_stop = False
+                break
+
+        if just_stop:
+            print(
+                f'Early stopping at depth {current_step} (all responses are the same)')
+            return True
+
         if self.args.depth_pruning_strategy == "cluster":
             # Check if responses are becoming similar
-            responses = step_results["trajectories"]
-
-            # Skip if not enough valid responses
-            valid_responses = [r for r in responses if r.strip()]
-            if len(valid_responses) < self.args.step_beam_size:
-                return False
-
-            # check whether all responses are the same
-            just_stop = True
-            first_response = valid_responses[0]
-            for response in valid_responses[1:]:
-                if response != first_response:
-                    just_stop = False
-                    break
-
-            if just_stop:
+            if step_results["stop_foresight"]:
                 print(
-                    f'Early stopping at depth {current_step} (all responses are the same)')
+                    f'Early stopping at depth {current_step} (max cluster ratio >= args.threshold)')
                 return True
-
-            try:
-                # Cluster responses
-                vectorizer = TfidfVectorizer()
-                X = vectorizer.fit_transform(valid_responses)
-                kmeans = KMeans(n_clusters=2)
-                kmeans.fit(X)
-
-                # Check cluster sizes
-                labels = kmeans.labels_
-                sizes = np.bincount(labels)
-                largest_ratio = max(sizes) / len(valid_responses)
-
-                early_stop_info = {
-                    'step': current_step,
-                    'valid_responses_count': len(valid_responses)
-                }
-
-                if just_stop:
-                    early_stop_info['reason'] = 'all_responses_same'
-                    early_stop_info['stopped'] = True
-                    step_results['early_stop_info'] = early_stop_info
-                    return True
-
-                early_stop_info.update({
-                    'cluster_sizes': sizes.tolist(),
-                    'largest_ratio': largest_ratio,
-                    'stopped': largest_ratio >= self.args.threshold,
-                    'threshold': self.args.threshold
-                })
-                step_results['early_stop_info'] = early_stop_info
-
-                return largest_ratio >= self.args.threshold
-
-            except Exception as e:
-                early_stop_info.update({
-                    'error': str(e),
-                    'stopped': False
-                })
-                step_results['early_stop_info'] = early_stop_info
-                return False
 
         return False
 
@@ -824,26 +709,14 @@ class PhiDecoder:
             token_stats["input"] += len(self.tokenizer(inputs)["input_ids"])
             all_inputs.append(inputs)
 
-        # 并行生成所有beam的响应
+        # parallel generate all beam responses
         sampling_params = SamplingParams(
-            max_tokens=1024,
+            max_tokens=3000,
             n=1,
             logprobs=0,
-            temperature=0.6,
             stop=["<end_of_reasoning>"]
         )
         outputs = self.model.generate(all_inputs, sampling_params)
-        if not outputs:
-            print("Error: Failed to generate responses in final stage")
-            return {
-                "response": previous_steps[0],  # 如果生成失败，返回之前的步骤
-                "trajectories": {
-                    "responses": [],
-                    "logprobs": [],
-                    "advantages": [],
-                    "selected_idx": 0
-                }
-            }
 
         rollout_stats["total"] += self.args.step_beam_size
 
@@ -854,10 +727,6 @@ class PhiDecoder:
         all_combined_responses = []
 
         for beam_idx, beam_outputs in enumerate(outputs):
-            if not beam_outputs or not beam_outputs.outputs:
-                print(f"Warning: Empty outputs for beam {beam_idx}")
-                continue
-
             output = beam_outputs.outputs[0]
             response = output.text.strip()
             logprob = output.cumulative_logprob / \
@@ -927,6 +796,36 @@ class PhiDecoder:
                 {"role": "assistant", "content": ""}
             ]
 
+    def _prepare_chat_template_for_first_stage(self, example, system_prompt):
+        """
+        Prepare chat template based on dataset type
+        Args:
+            example: Input example
+            system_prompt: System prompt
+        Returns:
+            List of chat messages
+        """
+        if "gsm" in self.args.datasets or "math" in self.args.datasets:
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user",
+                    "content": f"The question: {example['input']}\nPlease directly follow the previous reasoning steps (if provided) and generate the remaining ones.\n"},
+                {"role": "assistant", "content": ""}
+            ]
+        elif "reclor" in self.args.datasets or "logiqa" in self.args.datasets:
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Passage: {example['context']}\nQuestion: {example['question']}\n" +
+                    f"A. {example['answers'][0]}\nB. {example['answers'][1]}\nC. {example['answers'][2]}\nD. {example['answers'][3]}\n"},
+                {"role": "assistant", "content": ""}
+            ]
+        else:
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": example["input"]},
+                {"role": "assistant", "content": ""}
+            ]
+
 
 def main():
     """Main execution function"""
@@ -956,63 +855,52 @@ def main():
 
     # Process each test example
     for i, example in enumerate(test_data):
-        try:
-            # Generate system prompt
-            system_prompt = decoder.get_system_prompt(args.datasets)
+        # try:
+        # Generate system prompt
+        system_prompt = decoder.get_system_prompt(args.datasets)
 
-            # Process example
-            result = decoder.process_example(example, system_prompt)
+        # Process example
+        result = decoder.process_example(example, system_prompt)
 
-            # Update statistics
-            total_stats["total_rollouts"] += result["rollout_stats"]["total"]
-            total_stats["saved_rollouts"] += result["rollout_stats"]["saved"]
-            total_stats["input_tokens"] += result["token_stats"]["input"]
-            total_stats["output_tokens"] += result["token_stats"]["output"]
+        # Update statistics
+        total_stats["total_rollouts"] += result["rollout_stats"]["total"]
+        total_stats["saved_rollouts"] += result["rollout_stats"]["saved"]
+        total_stats["input_tokens"] += result["token_stats"]["input"]
+        total_stats["output_tokens"] += result["token_stats"]["output"]
 
-            # Add trajectory information
-            result["traj_info"]["question_idx"] = i
-            all_traj_info.append(result["traj_info"])
+        # Add trajectory information
+        result["traj_info"]["question_idx"] = i
+        all_traj_info.append(result["traj_info"])
 
-            # Prepare output result
-            output_result = {
-                "id": i,
-                "question": example["input"],
-                "ground_truth": example.get("target"),
-                "response": result["response"]
-            }
+        # Prepare output result
+        output_result = {
+            "id": i,
+            "question": example["input"],
+            "ground_truth": example.get("target"),
+            "response": result["response"]
+        }
 
-            # Write result to main output file
-            with open(output_path, "a") as f:
-                f.write(json.dumps(output_result) + "\n")
+        # Write result to main output file
+        with open(output_path, "a") as f:
+            f.write(json.dumps(output_result) + "\n")
 
-            print(
-                f'output_token_num_for_this_question: {result["token_stats"]["output"]}')
-            print(
-                f'input_token_num_for_this_question: {result["token_stats"]["input"]}')
-            print(f'all_output_token_num: {total_stats["output_tokens"]}')
-            print(f'all_input_token_num: {total_stats["input_tokens"]}')
+        print(
+            f'output_token_num_for_question{i}: {result["token_stats"]["output"]}')
+        print(
+            f'input_token_num_for_question{i}: {result["token_stats"]["input"]}')
+        print(f'all_output_token_num: {total_stats["output_tokens"]}')
+        print(f'all_input_token_num: {total_stats["input_tokens"]}')
 
-            # Save trajectory information
-            if args.record_process:
-                traj_path = os.path.join(
-                    args.time_path, f"TRAJ_INFO-{args.file_name}.json")
-                with open(traj_path, "w") as f:
-                    json.dump(all_traj_info, f, indent=2)
-
-        except Exception as e:
-            print(f"Error processing example {i}: {e}")
-            continue
+        # Save trajectory information
+        if args.record_process:
+            traj_path = os.path.join(
+                args.time_path, f"TRAJ_INFO-{args.file_name}.json")
+            with open(traj_path, "w") as f:
+                json.dump(all_traj_info, f, indent=2)
 
     # Calculate total time
     end_time = time.time()
     time_span = end_time - start_time
-
-    # Save time and statistics
-    # timing_info = {
-    #     "time": time_span,
-    #     "statistics": total_stats,
-    #     "config": vars(args)
-    # }
 
     # Save time information to separate file
     time_info_path = os.path.join(args.time_path, f"{args.file_name}.txt")
