@@ -48,8 +48,11 @@ P.S. If you find error in running phi_decoding.py, please refer to "origin" bran
 
 ## 🔧 PyPi Package
 
-We are currently working on providing a PyPI package. Stay tuned !
+We are working on the PyPi Package of $\phi$-Decoding. Stay tuned for the updates ! You can try it with:
 
+```bash
+pip install phi-decoding
+```
 
 ## Citation
 
