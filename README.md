@@ -14,7 +14,7 @@ Repo for "<a href="https://arxiv.org/abs/2503.13288" target="_blank">φ-Decoding
 </p>
 
 ## 🔥 News
-
+- [2025/05/16] 🔥🔥🔥 $\phi$-Decoding is accepted by ACL 2025 (Main Conference) !
 - [2025/02/16] 🔥🔥🔥 $\phi$-Decoding is released !
 
 ## 📖 Results
